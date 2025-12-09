@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: lumo-ai-advanced-smart-chatbot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app

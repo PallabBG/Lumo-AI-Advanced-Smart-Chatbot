@@ -18,8 +18,9 @@ sender = os.getenv("EMAIL_USER")
 password = os.getenv("EMAIL_PASS")
 
 # MongoDB connection (local)
-client = MongoClient("mongodb://localhost:27017/")
-db = client.lumo_db
+mongo_uri = os.getenv("MONGO_URI")
+client = MongoClient(mongo_uri)
+db = client.get_database("lumo_db")
 users_col = db.users
 chats_col = db.chats
 otp_col = db.otps
