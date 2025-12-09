@@ -3,3 +3,5 @@ flask-cors
 google-generativeai
 gunicorn
 python-dotenv
+pymongo
+werkzeug

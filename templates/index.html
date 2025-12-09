@@ -9,51 +9,42 @@
 <body>
   <div class="app-shell">
     <!-- Top bar (like ChatGPT) -->
-  <header class="top-bar">
-    <div class="top-bar-left">
-      <img src="https://img.icons8.com/fluency/96/chatbot.png" alt="Bot Avatar" class="logo">
-      <div>
-        <h1 class="app-title">Lumo AI ChatBot</h1>
-        <p class="app-subtitle">Made by Pallab Banerjee</p>
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <!-- ☰ menu button -->
+        <button id="sidebar-toggle" class="sidebar-toggle-btn">☰</button>
+
+        <img src="https://img.icons8.com/fluency/96/chatbot.png" alt="Bot Avatar" class="logo">
+        <div>
+          <h1 class="app-title">Lumo AI ChatBot</h1>
+          <p class="app-subtitle">Made by Pallab Banerjee</p>
+        </div>
       </div>
-    </div>
-    <div class="top-bar-right">
-      <select id="chat-history" class="history-select">
-        <option value="">History</option>
-      </select>
-      <button id="clear-history" class="history-clear-btn" title="Delete all saved chats">🗑</button>
-      <button id="new-chat" class="new-chat-btn">+ New Chat</button>
-      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">🌙</button>
-      <span class="status-dot"></span>
-      <span class="status-text">Online</span>
-    </div>
+
+      <div class="top-bar-right">
+        <button id="new-chat" class="new-chat-btn">+ New Chat</button>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+        <span class="status-dot"></span>
+        <span class="status-text">Online</span>
+      </div>
+    </header>
 
 
-  </header>
 
 
     <!-- Main layout -->
     <main class="chat-layout">
       <!-- Optional left panel: Tips / info -->
       <aside class="side-panel">
-        <h2>Quick Tips</h2>
-        <ul>
-          <li>Ask any programming doubt 👨‍💻</li>
-          <li>Get help with assignments 📚</li>
-          <li>Explain concepts in simple words 💡</li>
-        </ul>
+        <div class="side-panel-header">
+          <h2>Chats</h2>
+        </div>
 
-        <h3>Try asking:</h3>
-        <button class="suggestion-btn" onclick="setSuggestion(`Explain SQL Injection in simple words.`)">
-          Explain SQL Injection in simple words
-        </button>
-        <button class="suggestion-btn" onclick="setSuggestion(`Help me debug my code.`)">
-          Help me debug my code
-        </button>
-        <button class="suggestion-btn" onclick="setSuggestion(`Generate a study plan for exams.`)">
-          Generate a study plan
-        </button>
+        <ul id="history-list" class="history-list">
+    <!-- Filled by JS with saved chats -->
+        </ul>
       </aside>
+
 
       <!-- Chat section -->
       <section class="chat-section">
@@ -69,12 +60,12 @@
 
         <div class="input-area">
           <div class="input-inner">
-            <input
-              type="text"
+            <textarea
               id="user-input"
-              placeholder="Ask anything... (Press Enter to send)"
-              autocomplete="off"
-            />
+              placeholder="Ask anything... (Enter = send, Shift+Enter = new line)"
+              rows="1"
+            ></textarea>
+
             <button id="send-btn" onclick="sendMessage()">Send</button>
           </div>
           <p class="helper-text">Lumo AI ChatBot can help you with coding, studies, explanations, and more.</p>

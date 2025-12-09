@@ -1,6 +1,10 @@
-// ===== Global history state =====
+// ===== Global state =====
 let lumoChats = [];
 const HISTORY_KEY = "lumo-chat-history";
+let conversation = [];
+
+let lumoMemory = { name: null, age: null };
+const MEMORY_KEY = "lumo-memory";
 
 // ===== Send message to backend =====
 function sendMessage() {
@@ -10,6 +14,12 @@ function sendMessage() {
 
   appendMessage(message, "user");
 
+  // Copy history BEFORE adding this new message
+  const historyForServer = conversation.slice();
+
+  // Add this user message to local conversation
+  conversation.push({ role: "user", text: message });
+
   // Show typing indicator
   const typingId = showTypingIndicator();
 
@@ -18,12 +28,19 @@ function sendMessage() {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ message })
+    body: JSON.stringify({
+      message,
+      history: historyForServer   // 👈 send previous conversation
+    })
   })
     .then(res => res.json())
     .then(data => {
       removeTypingIndicator(typingId);
-      appendMessage(data.response || "No response received.", "bot");
+      const reply = data.response || "No response received.";
+      appendMessage(reply, "bot");
+
+      // Add bot reply to conversation memory
+      conversation.push({ role: "model", text: reply });
     })
     .catch(err => {
       console.error(err);
@@ -67,8 +84,8 @@ function formatMarkdown(text) {
   return text;
 }
 
-// ===== Append message to chat =====
-function appendMessage(message, sender) {
+// ===== Append message to chat (with optional typing animation) =====
+function appendMessage(message, sender, animate = false) {
   const box = document.getElementById("chat-box");
   if (!box) return;
 
@@ -82,18 +99,42 @@ function appendMessage(message, sender) {
   const msgDiv = document.createElement("div");
   msgDiv.classList.add("message", sender === "user" ? "user-message" : "bot-message");
 
-  // 👉 Use markdown formatting for BOTH user & bot
-  msgDiv.innerHTML = formatMarkdown(message);
+  const formatted = formatMarkdown(message);
+
+  if (animate && sender === "bot") {
+    typeWriterHtml(formatted, msgDiv);
+  } else {
+    msgDiv.innerHTML = formatted;
+  }
 
   row.appendChild(avatar);
   row.appendChild(msgDiv);
-
   box.appendChild(row);
 
   // Auto scroll only if near bottom
   if (Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) < 120) {
     box.scrollTop = box.scrollHeight;
   }
+}
+
+// ===== Simple HTML "typewriter" effect =====
+function typeWriterHtml(html, element, speed = 15) {
+  let i = 0;
+  const len = html.length;
+  const box = document.getElementById("chat-box");
+
+  const interval = setInterval(() => {
+    element.innerHTML = html.slice(0, i);
+    i++;
+
+    if (box) {
+      box.scrollTop = box.scrollHeight;
+    }
+
+    if (i > len) {
+      clearInterval(interval);
+    }
+  }, speed);
 }
 
 // ===== Typing indicator =====
@@ -174,6 +215,64 @@ function initTheme() {
   }
 }
 
+// ===== Memory helpers (very simple, for name & age) =====
+function loadMemory() {
+  const raw = localStorage.getItem(MEMORY_KEY);
+  if (raw) {
+    try {
+      lumoMemory = JSON.parse(raw);
+    } catch (e) {
+      lumoMemory = { name: null, age: null };
+    }
+  }
+}
+
+function saveMemory() {
+  localStorage.setItem(MEMORY_KEY, JSON.stringify(lumoMemory));
+}
+
+function updateMemoryFromUser(text) {
+  if (!text) return;
+
+  // Name patterns: "My name is Pallab", "I'm Pallab", "I am Pallab"
+  const nameMatch =
+    text.match(/my name is\s+([a-zA-Z ]+)/i) ||
+    text.match(/i am\s+([a-zA-Z ]+)/i) ||
+    text.match(/i'm\s+([a-zA-Z ]+)/i);
+
+  if (nameMatch) {
+    const name = nameMatch[1].trim();
+    if (name) lumoMemory.name = name;
+  }
+
+  // Age patterns: "I'm 20 years old", "I am 20 years old"
+  const ageMatch = text.match(/(\d{1,3})\s*(years old|year old|yrs old)?/i);
+  if (ageMatch) {
+    const age = parseInt(ageMatch[1], 10);
+    if (!isNaN(age)) lumoMemory.age = age;
+  }
+}
+
+function maybeHandleMemoryQuestion(text) {
+  if (!text) return null;
+
+  // Simple check like: "give me my name and age" / "tell me my name and my age"
+  const askPattern = /(give|tell)\s+me\s+my\s+name\s+and\s+my\s+age/i;
+  if (askPattern.test(text)) {
+    const name = lumoMemory.name
+      ? lumoMemory.name
+      : "(not told yet)";
+    const age =
+      lumoMemory.age !== null
+        ? lumoMemory.age
+        : "(not told yet)";
+
+    return `Here is what I remember:\n\nName: ${name}\nAge: ${age}`;
+  }
+
+  return null;
+}
+
 // ===== Chat history helpers =====
 function loadHistoryFromStorage() {
   const raw = localStorage.getItem(HISTORY_KEY);
@@ -185,14 +284,14 @@ function saveCurrentChatToHistory() {
   const chatBox = document.getElementById("chat-box");
   if (!chatBox) return;
 
-  // 🔹 Don't save if there is no user message yet
+  // Don't save if there is no user message yet
   const hasUserMsg = chatBox.querySelector(".user-message");
   if (!hasUserMsg) return;
 
   const content = chatBox.innerHTML.trim();
   if (!content) return;
 
-  // 🔹 Avoid saving exact duplicate of last saved chat
+  // Avoid saving exact duplicate of last saved chat
   const last = lumoChats[lumoChats.length - 1];
   if (last && last.content === content) {
     return;
@@ -213,24 +312,33 @@ function saveCurrentChatToHistory() {
   renderHistoryOptions();
 }
 
-
 function renderHistoryOptions() {
-  const select = document.getElementById("chat-history");
-  if (!select) return;
+  const list = document.getElementById("history-list");
+  if (list) {
+    list.innerHTML = "";
+    if (lumoChats.length === 0) {
+      const p = document.createElement("p");
+      p.className = "history-empty";
+      p.textContent = "No saved chats yet.";
+      list.appendChild(p);
+      return;
+    }
 
-  select.innerHTML = "";
-  const defaultOpt = document.createElement("option");
-  defaultOpt.value = "";
-  defaultOpt.textContent = "History";
-  select.appendChild(defaultOpt);
-
-  lumoChats.forEach(chat => {
-    const opt = document.createElement("option");
-    opt.value = chat.id;
-    opt.textContent = chat.title;
-    select.appendChild(opt);
-  });
+    // Newest first
+    [...lumoChats].slice().reverse().forEach(chat => {
+      const li = document.createElement("li");
+      li.className = "history-item";
+      li.textContent = chat.title;
+      li.addEventListener("click", () => {
+        loadChatById(chat.id);
+      });
+      list.appendChild(li);
+    });
+  }
 }
+
+
+
 
 function loadChatById(id) {
   const chatBox = document.getElementById("chat-box");
@@ -243,7 +351,11 @@ function loadChatById(id) {
 
 // ===== DOM Ready =====
 document.addEventListener("DOMContentLoaded", () => {
-  // Input + Enter to send
+  // Load memory & history
+  loadMemory();
+  loadHistoryFromStorage();
+
+  // Input: Enter = send, Shift+Enter = newline
   const input = document.getElementById("user-input");
   if (input) {
     input.addEventListener("keydown", (e) => {
@@ -251,65 +363,45 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         sendMessage();
       }
+      // Shift+Enter → normal (newline)
     });
   }
 
   // New Chat button
-  const newChatBtn = document.getElementById("new-chat");
+    const newChatBtn = document.getElementById("new-chat");
   if (newChatBtn) {
     newChatBtn.addEventListener("click", () => {
       const chatBox = document.getElementById("chat-box");
 
-      // ✅ Save current chat BEFORE clearing (only if it has user messages)
+      // Save current chat BEFORE clearing
       saveCurrentChatToHistory();
+
+      // Reset in-memory conversation
+      conversation = [];
 
       // Clear and start fresh
       chatBox.innerHTML = "";
-      appendMessage("Hi, I’m Lumo — your AI assistant. How can I help you today? 🙂", "bot");
+      const greeting = "Hi, I’m Lumo — your AI assistant. How can I help you today? 🙂";
+      appendMessage(greeting, "bot");
+      conversation.push({ role: "model", text: greeting });
     });
   }
 
-  // History dropdown (declare ONCE)
-  const historySelect = document.getElementById("chat-history");
-  if (historySelect) {
-    historySelect.addEventListener("change", (e) => {
-      const id = e.target.value;
-      if (!id) return;
+  
 
-      // ✅ Just load selected chat, do NOT save or reset value
-      loadChatById(id);
+  // Sidebar toggle (3-line menu) for small screens
+  const sidebarToggle = document.getElementById("sidebar-toggle");
+  const sidePanel = document.querySelector(".side-panel");
+
+  if (sidebarToggle && sidePanel) {
+    sidebarToggle.addEventListener("click", () => {
+      // For mobile: slide in/out
+      sidePanel.classList.toggle("open");
+      // For desktop: show/hide panel
+      document.body.classList.toggle("sidebar-hidden");
     });
   }
 
-  // 🗑 Delete selected chat from history
-  const clearBtn = document.getElementById("clear-history");
-  if (clearBtn && historySelect) {
-    clearBtn.addEventListener("click", () => {
-      const selectedId = historySelect.value;
-
-      if (!selectedId) {
-        alert("Please select a chat from History to delete.");
-        return;
-      }
-
-      const confirmed = confirm("Delete this chat from history?");
-      if (!confirmed) return;
-
-      // Remove only the selected chat
-      lumoChats = lumoChats.filter(c => String(c.id) !== String(selectedId));
-      if (lumoChats.length === 0) {
-        localStorage.removeItem(HISTORY_KEY);
-      } else {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(lumoChats));
-      }
-
-      // Rebuild dropdown and reset selection
-      renderHistoryOptions();
-      historySelect.value = "";
-    });
-  }
-
-  // Load existing history + theme
-  loadHistoryFromStorage();
+  // Theme
   initTheme();
 });
